@@ -1,11 +1,12 @@
 import { storeMessage, getMessagesSince, getRecentMessages, checkAndIncrementLimit, registerGroupChat, getGroupChats, getLastMessageTime } from "./storage.js";
+import { summarize, chat, spontaneous } from "./claude.js";
 
 const LIMIT_REPLIES = {
-  user_day:    "— Ты уже достаточно нас потревожил сегодня.\n— Согласен. Приходи завтра. Или не приходи.",
-  group_day:   "— На сегодня мы закрыты.\n— Мы вообще-то всегда закрыты, но сегодня особенно.",
-  group_month: "— Вы исчерпали наш месячный запас терпения.\n— У нас его и не было!",
+  user_day:    "хватит на сегодня",
+  group_day:   "на сегодня всё, устал",
+  group_month: "в этом месяце больше не буду",
+  dm_day:      "ладно, хватит тестировать",
 };
-import { summarize, chat, spontaneous } from "./claude.js";
 
 const BOT_TOKEN = () => process.env.TELEGRAM_BOT_TOKEN;
 const BOT_USERNAME = () => process.env.BOT_USERNAME;
@@ -39,19 +40,27 @@ export async function chimeIn() {
   const THREE_HOURS = 3 * 60 * 60;
   const nowSecs = Math.floor(Date.now() / 1000);
 
-  const chatIds = await getGroupChats();
+  let chatIds;
+  try { chatIds = await getGroupChats(); } catch (err) {
+    console.error("chimeIn: failed to get chats", err); return;
+  }
+
   for (const chatId of chatIds) {
-    const lastMsg = await getLastMessageTime(chatId);
-    if (!lastMsg || nowSecs - lastMsg > THREE_HOURS) continue;
+    try {
+      const lastMsg = await getLastMessageTime(chatId);
+      if (!lastMsg || nowSecs - lastMsg > THREE_HOURS) continue;
 
-    const limitHit = await checkAndIncrementLimit(chatId, "scheduler");
-    if (limitHit) continue;
+      const limitHit = await checkAndIncrementLimit(chatId, "scheduler");
+      if (limitHit) continue;
 
-    const recent = await getRecentMessages(chatId, 30);
-    if (recent.length === 0) continue;
+      const recent = await getRecentMessages(chatId, 30);
+      if (recent.length === 0) continue;
 
-    const response = await spontaneous(recent);
-    await sendMessage(chatId, response);
+      const response = await spontaneous(recent);
+      await sendMessage(chatId, response);
+    } catch (err) {
+      console.error(`chimeIn: error for chat ${chatId}`, err);
+    }
   }
 }
 
@@ -69,17 +78,14 @@ export async function handleUpdate(update) {
 
   // Persist every group message and remember this chat for the scheduler
   if (isGroup) {
-    await Promise.all([
-      registerGroupChat(chatId),
-      storeMessage({
-      message_id: msg.message_id,
-      chat_id: chatId,
-      from_name: fromName,
-      from_username: fromUsername,
-      text: msg.text,
-      date: msg.date,
-    }),
-    ]);
+    try {
+      await Promise.all([
+        registerGroupChat(chatId),
+        storeMessage({ message_id: msg.message_id, chat_id: chatId, from_name: fromName, from_username: fromUsername, text: msg.text, date: msg.date }),
+      ]);
+    } catch (err) {
+      console.error("Failed to store message", err);
+    }
   }
 
   const botUsername = BOT_USERNAME();
@@ -88,48 +94,58 @@ export async function handleUpdate(update) {
   // ── Private chat: only respond to the creator ─────────────────────────────
   if (isPrivate) {
     if (fromUsername !== CREATOR_USERNAME()) return;
-    await sendTyping(chatId);
-    // Use chat_id as a pseudo-history key for DMs
-    const recent = await getRecentMessages(chatId, 30);
-    const cleanText = msg.text.trim();
-    const response = await chat(recent, cleanText);
-    await sendMessage(chatId, response);
+
+    // DM rate limit: 20 calls/day (generous for testing, but capped)
+    try {
+      const limitHit = await checkAndIncrementLimit(`dm_${chatId}`, "dm");
+      if (limitHit) { await sendMessage(chatId, LIMIT_REPLIES.dm_day); return; }
+    } catch (err) {
+      console.error("DM limit check failed", err);
+    }
+
+    try {
+      await sendTyping(chatId);
+      const recent = await getRecentMessages(chatId, 30);
+      const response = await chat(recent, msg.text.trim());
+      await sendMessage(chatId, response);
+    } catch (err) {
+      console.error("DM handler error", err);
+    }
     return;
   }
 
   // ── Group chat: only respond when @mentioned ───────────────────────────────
   if (!isMentioned) return;
 
-  const limitHit = await checkAndIncrementLimit(chatId, msg.from.id);
-  if (limitHit) {
-    await sendMessage(chatId, LIMIT_REPLIES[limitHit], msg.message_id);
-    return;
+  try {
+    const limitHit = await checkAndIncrementLimit(chatId, msg.from.id);
+    if (limitHit) {
+      await sendMessage(chatId, LIMIT_REPLIES[limitHit], msg.message_id);
+      return;
+    }
+  } catch (err) {
+    console.error("Limit check failed", err);
   }
 
-  await sendTyping(chatId);
+  try {
+    await sendTyping(chatId);
 
-  // @mention + reply-to → summarize from that message to now
-  if (msg.reply_to_message) {
-    const anchor = msg.reply_to_message;
-    const messages = await getMessagesSince(chatId, anchor.date);
-
-    if (messages.length === 0) {
-      await sendMessage(
-        chatId,
-        "— Когда всё это началось, нас здесь ещё не было.\n— Как и смысла в этом разговоре!",
-        msg.message_id
-      );
+    if (msg.reply_to_message) {
+      const messages = await getMessagesSince(chatId, msg.reply_to_message.date);
+      if (messages.length === 0) {
+        await sendMessage(chatId, "не помню с чего это началось", msg.message_id);
+        return;
+      }
+      const summary = await summarize(messages);
+      await sendMessage(chatId, summary, msg.message_id);
       return;
     }
 
-    const summary = await summarize(messages);
-    await sendMessage(chatId, summary, msg.message_id);
-    return;
+    const recent = await getRecentMessages(chatId, 30);
+    const cleanText = msg.text.replace(`@${botUsername}`, "").trim() || "(позвали просто так)";
+    const response = await chat(recent, cleanText);
+    await sendMessage(chatId, response, msg.message_id);
+  } catch (err) {
+    console.error("Group handler error", err);
   }
-
-  // @mention without reply-to → sarcastic opinion with participant context
-  const recent = await getRecentMessages(chatId, 30);
-  const cleanText = msg.text.replace(`@${botUsername}`, "").trim() || "(просто позвали нас)";
-  const response = await chat(recent, cleanText);
-  await sendMessage(chatId, response, msg.message_id);
 }

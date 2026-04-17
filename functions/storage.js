@@ -1,7 +1,7 @@
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
-const LIMITS = { userDay: 5, groupDay: 25, groupMonth: 200 };
+const LIMITS = { userDay: 5, groupDay: 25, groupMonth: 200, dmDay: 20 };
 
 if (!getApps().length) {
   initializeApp();
@@ -53,6 +53,7 @@ export async function checkAndIncrementLimit(chatId, userId) {
   if (userCount >= LIMITS.userDay) return "user_day";
   if (dayTotal >= LIMITS.groupDay) return "group_day";
   if (monthTotal >= LIMITS.groupMonth) return "group_month";
+  if (dayTotal >= LIMITS.dmDay && String(chatId).startsWith("dm_")) return "dm_day";
 
   await Promise.all([
     dayRef.set({ total: FieldValue.increment(1), [`u_${userId}`]: FieldValue.increment(1) }, { merge: true }),
