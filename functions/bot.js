@@ -1,4 +1,4 @@
-import { storeMessage, getMessagesSince, getRecentMessages, checkAndIncrementLimit, registerGroupChat, getGroupChats, getLastMessageTime, storeBotMessage, trackBotMessageReaction, markBotMessageReacted, checkAndIncrementReactionLimit } from "./storage.js";
+import { storeMessage, getMessagesSince, getRecentMessages, checkAndIncrementLimit, registerGroupChat, getGroupChats, getLastMessageTime, storeBotMessage, trackBotMessageReaction, markBotMessageReacted, checkAndIncrementReactionLimit, checkAndIncrementChimeLimit } from "./storage.js";
 import { summarize, chat, spontaneous, pickEmoji } from "./claude.js";
 
 const LIMIT_REPLIES = {
@@ -153,8 +153,8 @@ export async function handleUpdate(update) {
     // ~1.5% chance per message to chime in on the most fun recent message
     if (Math.random() < 0.015) {
       try {
-        const limitHit = await checkAndIncrementLimit(chatId, "chime");
-        if (!limitHit) {
+        const allowed = await checkAndIncrementChimeLimit(chatId);
+        if (allowed) {
           const recent = await getRecentMessages(chatId, 30);
           if (recent.length > 0) {
             const { text, messageId } = await spontaneous(recent);

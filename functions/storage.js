@@ -76,6 +76,17 @@ export async function getRecentMessages(chatId, limit = 30) {
   return snap.docs.map((d) => d.data()).reverse();
 }
 
+// Check and increment chime counter (max 3/day per chat — separate from @mention limits).
+export async function checkAndIncrementChimeLimit(chatId) {
+  const today = new Date().toISOString().slice(0, 10);
+  const ref = db.collection("chime_limits").doc(`${chatId}_${today}`);
+  const snap = await ref.get();
+  const count = snap.data()?.count ?? 0;
+  if (count >= 3) return false;
+  await ref.set({ count: FieldValue.increment(1) }, { merge: true });
+  return true;
+}
+
 // Check and increment spontaneous reaction counter (max 10/day per chat).
 // Returns true if allowed, false if limit hit.
 export async function checkAndIncrementReactionLimit(chatId) {
