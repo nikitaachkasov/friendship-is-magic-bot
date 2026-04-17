@@ -76,6 +76,18 @@ export async function getRecentMessages(chatId, limit = 30) {
   return snap.docs.map((d) => d.data()).reverse();
 }
 
+// Check and increment spontaneous reaction counter (max 10/day per chat).
+// Returns true if allowed, false if limit hit.
+export async function checkAndIncrementReactionLimit(chatId) {
+  const today = new Date().toISOString().slice(0, 10);
+  const ref = db.collection("reaction_limits").doc(`${chatId}_${today}`);
+  const snap = await ref.get();
+  const count = snap.data()?.count ?? 0;
+  if (count >= 10) return false;
+  await ref.set({ count: FieldValue.increment(1) }, { merge: true });
+  return true;
+}
+
 // Track a message sent by the bot so we can watch for reactions on it
 export async function storeBotMessage(chatId, botMessageId, replyToMessageId) {
   await db.collection("bot_messages").doc(`${chatId}_${botMessageId}`).set({

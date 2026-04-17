@@ -1,4 +1,4 @@
-import { storeMessage, getMessagesSince, getRecentMessages, checkAndIncrementLimit, registerGroupChat, getGroupChats, getLastMessageTime, storeBotMessage, trackBotMessageReaction, markBotMessageReacted } from "./storage.js";
+import { storeMessage, getMessagesSince, getRecentMessages, checkAndIncrementLimit, registerGroupChat, getGroupChats, getLastMessageTime, storeBotMessage, trackBotMessageReaction, markBotMessageReacted, checkAndIncrementReactionLimit } from "./storage.js";
 import { summarize, chat, spontaneous, pickEmoji } from "./claude.js";
 
 const LIMIT_REPLIES = {
@@ -119,6 +119,19 @@ export async function handleUpdate(update) {
       ]);
     } catch (err) {
       console.error("Failed to store message", err);
+    }
+
+    // 10% chance to spontaneously react to any group message
+    if (Math.random() < 0.10) {
+      try {
+        const allowed = await checkAndIncrementReactionLimit(chatId);
+        if (allowed) {
+          const emoji = await pickEmoji(msg.text);
+          await setReaction(chatId, msg.message_id, emoji);
+        }
+      } catch (err) {
+        console.error("Spontaneous reaction error", err);
+      }
     }
   }
 
