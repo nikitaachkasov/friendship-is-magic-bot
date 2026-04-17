@@ -69,8 +69,8 @@ export async function chimeIn() {
       const recent = await getRecentMessages(chatId, 30);
       if (recent.length === 0) continue;
 
-      const response = await spontaneous(recent);
-      await sendMessage(chatId, response);
+      const { text, messageId } = await spontaneous(recent);
+      await sendMessage(chatId, text, messageId);
     } catch (err) {
       console.error(`chimeIn: error for chat ${chatId}`, err);
     }

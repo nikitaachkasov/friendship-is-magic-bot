@@ -38,22 +38,36 @@ export async function summarize(messages) {
   return response.content[0].text;
 }
 
+// Returns { text, messageId } — picks the most interesting message and replies to it
 export async function spontaneous(recentMessages) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const conversation = formatMessages(recentMessages);
+  const numbered = recentMessages
+    .map((m, i) => `[${i}] ${m.from_name}: ${m.text}`)
+    .join("\n");
 
   const userPrompt =
-    `Вот последние сообщения из чата. Напиши одно короткое небрежное сообщение — как будто ты случайно заглянул и не удержался. Без повода, просто реакция.\n\n${conversation}`;
+    `Вот последние сообщения из чата. Выбери ОДНО самое интересное или смешное сообщение и ответь на него коротко и небрежно.\n\n` +
+    `Ответь строго в формате:\nINDEX: <номер>\nREPLY: <твой ответ>\n\n${numbered}`;
 
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
-    max_tokens: 80,
+    max_tokens: 100,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userPrompt }],
   });
 
-  return response.content[0].text;
+  const raw = response.content[0].text;
+  const indexMatch = raw.match(/INDEX:\s*(\d+)/);
+  const replyMatch = raw.match(/REPLY:\s*(.+)/s);
+
+  const index = indexMatch ? parseInt(indexMatch[1]) : null;
+  const text = replyMatch ? replyMatch[1].trim() : raw.trim();
+  const messageId = (index !== null && recentMessages[index])
+    ? recentMessages[index].message_id
+    : null;
+
+  return { text, messageId };
 }
 
 // Pick one emoji reaction for a message. Returns a single emoji character.

@@ -15,12 +15,9 @@ export const webhook = onRequest({ region: "us-central1" }, async (req, res) => 
   res.status(200).send("OK");
 });
 
-// Bishkek is UTC+6. Waking hours ≈ 9:00–22:00 local = 3:00–16:00 UTC.
-// Two triggers at 07:00 UTC (13:00 Bishkek) and 13:00 UTC (19:00 Bishkek).
-export const chimeInMorning = onSchedule({ schedule: "0 7 * * *", region: "us-central1" }, async () => {
-  try { await chimeIn(); } catch (err) { console.error("chimeIn error:", err); }
-});
-
-export const chimeInEvening = onSchedule({ schedule: "0 13 * * *", region: "us-central1" }, async () => {
+// Runs every 2 hours. 10% chance to actually fire → ~once a day on average,
+// varies naturally. Only sends if chat was active in the last 3 hours.
+export const chimeInScheduled = onSchedule({ schedule: "every 2 hours", region: "us-central1" }, async () => {
+  if (Math.random() > 0.10) return;
   try { await chimeIn(); } catch (err) { console.error("chimeIn error:", err); }
 });
