@@ -150,6 +150,22 @@ export async function handleUpdate(update) {
       console.error("Failed to store message", err);
     }
 
+    // ~1.5% chance per message to chime in on the most fun recent message
+    if (Math.random() < 0.015) {
+      try {
+        const limitHit = await checkAndIncrementLimit(chatId, "chime");
+        if (!limitHit) {
+          const recent = await getRecentMessages(chatId, 30);
+          if (recent.length > 0) {
+            const { text, messageId } = await spontaneous(recent);
+            await sendMessage(chatId, text, messageId);
+          }
+        }
+      } catch (err) {
+        console.error("Inline chime error", err);
+      }
+    }
+
     // 10% chance to spontaneously react to any group message (not the bot's own)
     if (msg.from?.username !== BOT_USERNAME() && Math.random() < 0.10) {
       try {
