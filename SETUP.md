@@ -14,20 +14,28 @@ Grumpy Telegram bot for "🦄friendship is magic🦄". Summarizes conversations,
 | DM the bot (only @nikitaachkasov) | Responds in character, 20 DM calls/day cap |
 | Any group message (10% chance) | Bot adds a sarcastic emoji reaction |
 | Bot's own message gets 3+ reactions | Bot reacts with an emoji to the original message (40% chance) |
-| Automatically at 13:00 and 19:00 Bishkek time | Chimes in if the chat has been active in the last 3 hours |
+| ~3% chance on any group message | Spontaneously chimes in on one of the recent messages (3/day cap) |
+| First message of the day in the chat (2% chance) | Chimes in with a short comment |
+| Same person sends 5+ messages in a row (0.5% chance) | Chimes in on the streak |
+| A message gets 3+ replies (drama detector) | Reacts with an emoji to the original message |
+| Any group message (10% chance) | Bot adds a spontaneous emoji reaction (10/day cap) |
+| Bot's own message gets 3+ reactions | Bot reacts with an emoji to the original message (40% chance) |
 
 **Rate limits** (to stay within free tiers):
-- 5 calls per person per day (@mention)
+- 5 @mention calls per person per day
 - 25 @mention calls per group per day
 - 200 @mention calls per group per month
-- 20 DM calls per day (creator only)
+- 50 DM calls per day (creator only)
 - 10 spontaneous emoji reactions per group per day
+- 3 spontaneous chimes per group per day
 
 ---
 
 ## Personality
 
-Single grumpy voice. **Always небрежный** — lowercase, no unnecessary punctuation, short sentences, like a real person texting in a group chat. NOT formal, NOT literary, NOT long. Sarcastic but secretly fond. Never introduces or describes itself. Always Russian.
+Single grumpy voice. **Always небрежный** — lowercase, no unnecessary punctuation, short sentences, like a real person texting in a group chat. NOT formal, NOT literary, NOT long. Sarcastic but secretly fond. Never introduces or describes itself. Mostly Russian — but can occasionally drop a word or two in English or Kyrgyz if it fits naturally.
+
+Prompts are time-aware: the system prompt dynamically injects the current time of day in Bishkek (UTC+6), so the bot knows if it's midnight, morning, afternoon, or evening.
 
 **If the bot ever starts writing long formal text — the prompts need tightening. Reduce max_tokens and make the system prompt more explicit about brevity.**
 
@@ -155,3 +163,24 @@ firebase functions:log
 | `reaction_limits/{chatId_date}` | Daily spontaneous reaction counters |
 | `group_chats` | Known group chat IDs (for scheduler) |
 | `bot_messages` | Bot message IDs + reaction counts (for reaction feature) |
+| `chime_limits/{chatId_date}` | Daily spontaneous chime counters (max 3/day) |
+| `daily_first/{chatId_date}` | Tracks whether the first-message-of-day has been seen |
+| `reply_counts/{chatId_messageId}` | Reply counts per message (for drama detector) |
+
+---
+
+## Name mapping
+
+Edit `functions/names.js` to map Telegram display names or usernames to real names.
+Claude uses these when building conversation context — makes responses feel more personal.
+
+```js
+export const NAME_MAP = {
+  "🐬🐬🐬": "Диана",
+  "𝒔𝒉𝒂𝒌𝒉𝒊𝒅𝒂": "Шахида",
+  "kair": "Кайрат",
+  "bzmtkv": "Болот",
+};
+```
+
+Key can be a Telegram **first name** (or display name) or a **username** (without @).

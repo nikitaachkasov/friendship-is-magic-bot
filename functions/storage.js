@@ -76,6 +76,25 @@ export async function getRecentMessages(chatId, limit = 30) {
   return snap.docs.map((d) => d.data()).reverse();
 }
 
+// Returns true if this is the first message seen today in this chat, then marks it.
+export async function checkAndMarkFirstMessageOfDay(chatId) {
+  const today = new Date().toISOString().slice(0, 10);
+  const ref = db.collection("daily_first").doc(`${chatId}_${today}`);
+  const snap = await ref.get();
+  if (snap.exists) return false;
+  await ref.set({ seen: true });
+  return true;
+}
+
+// Track replies to a message. Returns new reply count.
+export async function trackReplyCount(chatId, messageId) {
+  const ref = db.collection("reply_counts").doc(`${chatId}_${messageId}`);
+  const snap = await ref.get();
+  const count = (snap.data()?.count ?? 0) + 1;
+  await ref.set({ count }, { merge: true });
+  return count;
+}
+
 // Check and increment chime counter (max 3/day per chat — separate from @mention limits).
 export async function checkAndIncrementChimeLimit(chatId) {
   const today = new Date().toISOString().slice(0, 10);

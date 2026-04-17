@@ -1,8 +1,20 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-const SYSTEM_PROMPT = `пишешь как ворчливый чувак в групповом чате — строчными буквами, небрежно, без лишних знаков препинания. одна-две фразы максимум. никаких диалогов, никаких персонажей, никаких имён перед репликами. просто короткий небрежный комментарий от одного человека. не описывай себя. только русский.`;
+function timeContext() {
+  const hour = new Date(Date.now()).toLocaleString("en-US", { timeZone: "Asia/Bishkek", hour: "numeric", hour12: false });
+  const h = parseInt(hour);
+  if (h >= 23 || h < 3)  return "сейчас глубокая ночь в бишкеке. ";
+  if (h >= 3  && h < 7)  return "сейчас ранее утро в бишкеке. все спят. ";
+  if (h >= 7  && h < 12) return "сейчас утро в бишкеке. ";
+  if (h >= 12 && h < 17) return "сейчас день в бишкеке. ";
+  if (h >= 17 && h < 21) return "сейчас вечер в бишкеке. ";
+  return "сейчас поздний вечер в бишкеке. ";
+}
 
-const SUMMARIZE_SYSTEM_PROMPT = `пишешь как ворчливый чувак в чате — строчными, небрежно, коротко. максимум 3 коротких предложения. никакого форматирования, никаких заглавных букв без нужды. только русский.`;
+const BASE_PROMPT = `пишешь как ворчливый чувак в групповом чате — строчными буквами, небрежно, без лишних знаков препинания. одна-две фразы максимум. никаких диалогов, никаких персонажей, никаких имён перед репликами. просто короткий небрежный комментарий от одного человека. не описывай себя. никогда не ставь ')' или ')))' в конце — это устарело. пиши в основном на русском, но изредка можно вставить слово-два по-английски или по-кыргызски если уместно.`;
+const SYSTEM_PROMPT = () => timeContext() + BASE_PROMPT;
+
+const SUMMARIZE_SYSTEM_PROMPT = () => timeContext() + `пишешь как ворчливый чувак в чате — строчными, небрежно, коротко. максимум 3 коротких предложения. никакого форматирования, никаких заглавных букв без нужды. только русский.`;
 
 function formatMessages(messages) {
   return messages
@@ -31,7 +43,7 @@ export async function summarize(messages) {
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 150,
-    system: SUMMARIZE_SYSTEM_PROMPT,
+    system: SUMMARIZE_SYSTEM_PROMPT(),
     messages: [{ role: "user", content: userPrompt }],
   });
 
@@ -53,7 +65,7 @@ export async function spontaneous(recentMessages) {
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 100,
-    system: SYSTEM_PROMPT,
+    system: SYSTEM_PROMPT(),
     messages: [{ role: "user", content: userPrompt }],
   });
 
@@ -103,7 +115,7 @@ export async function chat(recentMessages, userMessage) {
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 100,
-    system: SYSTEM_PROMPT,
+    system: SYSTEM_PROMPT(),
     messages: [{ role: "user", content: userPrompt }],
   });
 

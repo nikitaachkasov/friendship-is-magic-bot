@@ -1,4 +1,4 @@
-import { storeMessage, getMessagesSince, getRecentMessages, checkAndIncrementLimit, registerGroupChat, getGroupChats, getLastMessageTime, storeBotMessage, trackBotMessageReaction, markBotMessageReacted, checkAndIncrementReactionLimit, checkAndIncrementChimeLimit } from "./storage.js";
+import { storeMessage, getMessagesSince, getRecentMessages, checkAndIncrementLimit, registerGroupChat, getGroupChats, getLastMessageTime, storeBotMessage, trackBotMessageReaction, markBotMessageReacted, checkAndIncrementReactionLimit, checkAndIncrementChimeLimit, checkAndMarkFirstMessageOfDay, trackReplyCount } from "./storage.js";
 import { summarize, chat, spontaneous, pickEmoji } from "./claude.js";
 import { resolveName } from "./names.js";
 
@@ -179,6 +179,55 @@ export async function handleUpdate(update) {
       } catch (err) {
         console.error("Spontaneous reaction error", err);
       }
+    }
+
+    // First message of the day — 2% chance to chime in
+    try {
+      const isFirst = await checkAndMarkFirstMessageOfDay(chatId);
+      if (isFirst && Math.random() < 0.02) {
+        const allowed = await checkAndIncrementChimeLimit(chatId);
+        if (allowed) {
+          const recent = await getRecentMessages(chatId, 5);
+          const { text, messageId } = await spontaneous(recent.length ? recent : [{ from_name: fromName, text: msg.text, message_id: msg.message_id }]);
+          await sendMessage(chatId, text, messageId);
+        }
+      }
+    } catch (err) {
+      console.error("First message chime error", err);
+    }
+
+    // Drama detector — message is a reply, track reply count; at 3+ react with emoji
+    if (msg.reply_to_message) {
+      try {
+        const count = await trackReplyCount(chatId, msg.reply_to_message.message_id);
+        if (count === 3) {
+          const allowed = await checkAndIncrementReactionLimit(chatId);
+          if (allowed) {
+            const emoji = await pickEmoji(msg.reply_to_message.text ?? "");
+            await setReaction(chatId, msg.reply_to_message.message_id, emoji);
+          }
+        }
+      } catch (err) {
+        console.error("Drama detector error", err);
+      }
+    }
+
+    // Streak awareness — same person 5+ messages in a row, 0.5% chance to reply
+    try {
+      const recent = await getRecentMessages(chatId, 6);
+      if (recent.length >= 5) {
+        const last5 = recent.slice(-5);
+        const allSame = last5.every(m => m.from_username === fromUsername);
+        if (allSame && Math.random() < 0.005) {
+          const allowed = await checkAndIncrementChimeLimit(chatId);
+          if (allowed) {
+            const { text } = await spontaneous(recent);
+            await sendMessage(chatId, text, msg.message_id);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Streak awareness error", err);
     }
   }
 
