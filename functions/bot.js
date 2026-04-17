@@ -153,7 +153,7 @@ export async function handleUpdate(update) {
     }
 
     // ~1.5% chance per message to chime in on the most fun recent message
-    if (Math.random() < 0.015) {
+    if (Math.random() < 0.03) {
       try {
         const allowed = await checkAndIncrementChimeLimit(chatId);
         if (allowed) {
