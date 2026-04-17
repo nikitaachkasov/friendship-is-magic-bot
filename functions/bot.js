@@ -1,11 +1,11 @@
-import { storeMessage, getMessagesSince, getRecentMessages, checkAndIncrementLimit } from "./storage.js";
+import { storeMessage, getMessagesSince, getRecentMessages, checkAndIncrementLimit, registerGroupChat, getGroupChats, getLastMessageTime } from "./storage.js";
 
 const LIMIT_REPLIES = {
   user_day:    "— Ты уже достаточно нас потревожил сегодня.\n— Согласен. Приходи завтра. Или не приходи.",
   group_day:   "— На сегодня мы закрыты.\n— Мы вообще-то всегда закрыты, но сегодня особенно.",
   group_month: "— Вы исчерпали наш месячный запас терпения.\n— У нас его и не было!",
 };
-import { summarize, chat } from "./claude.js";
+import { summarize, chat, spontaneous } from "./claude.js";
 
 const BOT_TOKEN = () => process.env.TELEGRAM_BOT_TOKEN;
 const BOT_USERNAME = () => process.env.BOT_USERNAME;
@@ -34,6 +34,27 @@ function getFullName(from) {
   return from.first_name + (from.last_name ? ` ${from.last_name}` : "");
 }
 
+// Called by the scheduler — chimes in on all known active group chats
+export async function chimeIn() {
+  const THREE_HOURS = 3 * 60 * 60;
+  const nowSecs = Math.floor(Date.now() / 1000);
+
+  const chatIds = await getGroupChats();
+  for (const chatId of chatIds) {
+    const lastMsg = await getLastMessageTime(chatId);
+    if (!lastMsg || nowSecs - lastMsg > THREE_HOURS) continue;
+
+    const limitHit = await checkAndIncrementLimit(chatId, "scheduler");
+    if (limitHit) continue;
+
+    const recent = await getRecentMessages(chatId, 30);
+    if (recent.length === 0) continue;
+
+    const response = await spontaneous(recent);
+    await sendMessage(chatId, response);
+  }
+}
+
 export async function handleUpdate(update) {
   const msg = update.message;
   if (!msg || !msg.text) return;
@@ -46,16 +67,19 @@ export async function handleUpdate(update) {
   const isGroup = chatType === "group" || chatType === "supergroup";
   const isPrivate = chatType === "private";
 
-  // Persist every group message for later summarization
+  // Persist every group message and remember this chat for the scheduler
   if (isGroup) {
-    await storeMessage({
+    await Promise.all([
+      registerGroupChat(chatId),
+      storeMessage({
       message_id: msg.message_id,
       chat_id: chatId,
       from_name: fromName,
       from_username: fromUsername,
       text: msg.text,
       date: msg.date,
-    });
+    }),
+    ]);
   }
 
   const botUsername = BOT_USERNAME();

@@ -74,3 +74,27 @@ export async function getRecentMessages(chatId, limit = 30) {
 
   return snap.docs.map((d) => d.data()).reverse();
 }
+
+// Remember this chat so the scheduler can find it later
+export async function registerGroupChat(chatId) {
+  await db.collection("group_chats").doc(String(chatId)).set({ chatId, updatedAt: Date.now() }, { merge: true });
+}
+
+// Return all known group chat IDs
+export async function getGroupChats() {
+  const snap = await db.collection("group_chats").get();
+  return snap.docs.map((d) => d.data().chatId);
+}
+
+// Timestamp (unix seconds) of the most recent message in a chat
+export async function getLastMessageTime(chatId) {
+  const snap = await db
+    .collection("chats")
+    .doc(String(chatId))
+    .collection("messages")
+    .orderBy("date", "desc")
+    .limit(1)
+    .get();
+  if (snap.empty) return null;
+  return snap.docs[0].data().date;
+}
