@@ -76,6 +76,30 @@ export async function getRecentMessages(chatId, limit = 30) {
   return snap.docs.map((d) => d.data()).reverse();
 }
 
+// Track a message sent by the bot so we can watch for reactions on it
+export async function storeBotMessage(chatId, botMessageId, replyToMessageId) {
+  await db.collection("bot_messages").doc(`${chatId}_${botMessageId}`).set({
+    chatId, botMessageId, replyToMessageId: replyToMessageId ?? null, reactions: 0, reacted: false,
+  });
+}
+
+// Increment reaction count on a bot message. Returns the new count, or null if not found.
+export async function trackBotMessageReaction(chatId, botMessageId) {
+  const ref = db.collection("bot_messages").doc(`${chatId}_${botMessageId}`);
+  const snap = await ref.get();
+  if (!snap.exists) return null;
+  const data = snap.data();
+  if (data.reacted) return null; // already reacted, skip
+  const newCount = (data.reactions ?? 0) + 1;
+  await ref.update({ reactions: newCount });
+  return { count: newCount, replyToMessageId: data.replyToMessageId, reacted: data.reacted };
+}
+
+// Mark a bot message as already reacted
+export async function markBotMessageReacted(chatId, botMessageId) {
+  await db.collection("bot_messages").doc(`${chatId}_${botMessageId}`).update({ reacted: true });
+}
+
 // Remember this chat so the scheduler can find it later
 export async function registerGroupChat(chatId) {
   await db.collection("group_chats").doc(String(chatId)).set({ chatId, updatedAt: Date.now() }, { merge: true });

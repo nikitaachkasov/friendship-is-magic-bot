@@ -1,5 +1,5 @@
-import { storeMessage, getMessagesSince, getRecentMessages, checkAndIncrementLimit, registerGroupChat, getGroupChats, getLastMessageTime } from "./storage.js";
-import { summarize, chat, spontaneous } from "./claude.js";
+import { storeMessage, getMessagesSince, getRecentMessages, checkAndIncrementLimit, registerGroupChat, getGroupChats, getLastMessageTime, storeBotMessage, trackBotMessageReaction, markBotMessageReacted } from "./storage.js";
+import { summarize, chat, spontaneous, pickEmoji } from "./claude.js";
 
 const LIMIT_REPLIES = {
   user_day:    "хватит на сегодня",
@@ -24,7 +24,20 @@ async function tgPost(method, body) {
 async function sendMessage(chatId, text, replyToMessageId = null) {
   const body = { chat_id: chatId, text, parse_mode: "HTML" };
   if (replyToMessageId) body.reply_to_message_id = replyToMessageId;
-  return tgPost("sendMessage", body);
+  const result = await tgPost("sendMessage", body);
+  // Store bot message ID so we can watch reactions on it
+  if (result?.ok && result.result?.message_id) {
+    storeBotMessage(chatId, result.result.message_id, replyToMessageId).catch(() => {});
+  }
+  return result;
+}
+
+async function setReaction(chatId, messageId, emoji) {
+  return tgPost("setMessageReaction", {
+    chat_id: chatId,
+    message_id: messageId,
+    reaction: [{ type: "emoji", emoji }],
+  });
 }
 
 async function sendTyping(chatId) {
@@ -65,6 +78,27 @@ export async function chimeIn() {
 }
 
 export async function handleUpdate(update) {
+  // Handle emoji reactions on bot messages
+  if (update.message_reaction) {
+    const { chat, message_id, new_reaction } = update.message_reaction;
+    if (!new_reaction?.length) return;
+    try {
+      const result = await trackBotMessageReaction(chat.id, message_id);
+      if (result && result.count >= 3 && !result.reacted && Math.random() < 0.4) {
+        await markBotMessageReacted(chat.id, message_id);
+        const targetId = result.replyToMessageId ?? message_id;
+        // Get the text of the triggering message to pick an appropriate emoji
+        const recent = await getRecentMessages(chat.id, 10);
+        const trigger = recent.find(m => m.message_id === targetId);
+        const emoji = await pickEmoji(trigger?.text ?? "");
+        await setReaction(chat.id, targetId, emoji);
+      }
+    } catch (err) {
+      console.error("Reaction handler error", err);
+    }
+    return;
+  }
+
   const msg = update.message;
   if (!msg || !msg.text) return;
 

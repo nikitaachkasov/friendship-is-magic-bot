@@ -25,8 +25,7 @@ export async function summarize(messages) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const userPrompt =
-    `Вот сообщения из чата. Кратко и саркастично перескажи что произошло — не более 5-6 предложений. ` +
-    `В конце одна короткая перепалка Statler и Waldorf.\n\n` +
+    `Вот сообщения из чата. Кратко и саркастично перескажи что произошло — не более 5-6 предложений.\n\n` +
     formatMessages(messages);
 
   const response = await client.messages.create({
@@ -55,6 +54,21 @@ export async function spontaneous(recentMessages) {
   });
 
   return response.content[0].text;
+}
+
+// Pick one emoji reaction for a message. Returns a single emoji character.
+const ALLOWED_EMOJIS = ["👍","👎","🔥","🤣","😱","🤔","🤨","😐","💅","🥱","😴","👀","🤡","💩","🏆","💔","😈","🤦","🤷","👌"];
+
+export async function pickEmoji(messageText) {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 10,
+    system: "Ты выбираешь одну эмодзи-реакцию на сообщение. Отвечай ТОЛЬКО одним эмодзи из списка, без пробелов и текста.",
+    messages: [{ role: "user", content: `Список: ${ALLOWED_EMOJIS.join(" ")}\n\nСообщение: ${messageText}\n\nОдна эмодзи:` }],
+  });
+  const emoji = response.content[0].text.trim();
+  return ALLOWED_EMOJIS.includes(emoji) ? emoji : "👀";
 }
 
 export async function chat(recentMessages, userMessage) {
