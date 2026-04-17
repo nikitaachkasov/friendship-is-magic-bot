@@ -1,7 +1,7 @@
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
-const LIMITS = { userDay: 5, groupDay: 25, groupMonth: 200, dmDay: 20 };
+const LIMITS = { userDay: 5, groupDay: 25, groupMonth: 200, dmDay: 50 };
 
 if (!getApps().length) {
   initializeApp();
