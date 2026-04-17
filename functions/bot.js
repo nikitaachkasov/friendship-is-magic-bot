@@ -85,13 +85,16 @@ export async function handleUpdate(update) {
     try {
       const result = await trackBotMessageReaction(chat.id, message_id);
       if (result && result.count >= 3 && !result.reacted && Math.random() < 0.4) {
-        await markBotMessageReacted(chat.id, message_id);
-        const targetId = result.replyToMessageId ?? message_id;
-        // Get the text of the triggering message to pick an appropriate emoji
-        const recent = await getRecentMessages(chat.id, 10);
-        const trigger = recent.find(m => m.message_id === targetId);
-        const emoji = await pickEmoji(trigger?.text ?? "");
-        await setReaction(chat.id, targetId, emoji);
+        // Rate-limit emoji picks from bot-message reactions too
+        const allowed = await checkAndIncrementReactionLimit(chat.id);
+        if (allowed) {
+          await markBotMessageReacted(chat.id, message_id);
+          const targetId = result.replyToMessageId ?? message_id;
+          const recent = await getRecentMessages(chat.id, 10);
+          const trigger = recent.find(m => m.message_id === targetId);
+          const emoji = await pickEmoji(trigger?.text ?? "");
+          await setReaction(chat.id, targetId, emoji);
+        }
       }
     } catch (err) {
       console.error("Reaction handler error", err);
@@ -121,8 +124,8 @@ export async function handleUpdate(update) {
       console.error("Failed to store message", err);
     }
 
-    // 10% chance to spontaneously react to any group message
-    if (Math.random() < 0.10) {
+    // 10% chance to spontaneously react to any group message (not the bot's own)
+    if (msg.from?.username !== BOT_USERNAME() && Math.random() < 0.10) {
       try {
         const allowed = await checkAndIncrementReactionLimit(chatId);
         if (allowed) {
@@ -141,7 +144,7 @@ export async function handleUpdate(update) {
 
   // ── Private chat: only respond to the creator ─────────────────────────────
   if (isPrivate) {
-    if (fromUsername !== CREATOR_USERNAME()) return;
+    if (!fromUsername || fromUsername !== CREATOR_USERNAME()) return;
 
     // DM rate limit: 20 calls/day (generous for testing, but capped)
     try {
