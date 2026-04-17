@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const SYSTEM_PROMPT = `пишешь как ворчливый чувак в групповом чате — строчными буквами, небрежно, без лишних знаков препинания. одна-две фразы максимум. никаких диалогов, никаких персонажей, никаких имён перед репликами. просто короткий небрежный комментарий от одного человека. не описывай себя. только русский.`;
 
-const SUMMARIZE_SYSTEM_PROMPT = `Ты один человек — ворчливый и саркастичный, но втайне добрый. Пишешь от первого лица, одним голосом. Никаких диалогов, никаких "Statler:", "Waldorf:", никакого форматирования. Всегда по-русски.`;
+const SUMMARIZE_SYSTEM_PROMPT = `пишешь как ворчливый чувак в чате — строчными, небрежно, коротко. максимум 3 коротких предложения. никакого форматирования, никаких заглавных букв без нужды. только русский.`;
 
 function formatMessages(messages) {
   return messages
@@ -25,12 +25,12 @@ export async function summarize(messages) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const userPrompt =
-    `Вот сообщения из чата. Кратко и саркастично перескажи что произошло — не более 5-6 предложений.\n\n` +
+    `вот сообщения из чата. в 2-3 коротких небрежных предложения расскажи что там было. без пафоса.\n\n` +
     formatMessages(messages);
 
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
-    max_tokens: 300,
+    max_tokens: 150,
     system: SUMMARIZE_SYSTEM_PROMPT,
     messages: [{ role: "user", content: userPrompt }],
   });
