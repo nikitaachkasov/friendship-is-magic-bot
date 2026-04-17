@@ -90,6 +90,7 @@ export async function handleUpdate(update) {
 
   const botUsername = BOT_USERNAME();
   const isMentioned = msg.text.includes(`@${botUsername}`);
+  const isReplyToBot = msg.reply_to_message?.from?.username === botUsername;
 
   // ── Private chat: only respond to the creator ─────────────────────────────
   if (isPrivate) {
@@ -114,8 +115,8 @@ export async function handleUpdate(update) {
     return;
   }
 
-  // ── Group chat: only respond when @mentioned ───────────────────────────────
-  if (!isMentioned) return;
+  // ── Group chat: only respond when @mentioned or someone replies to the bot ──
+  if (!isMentioned && !isReplyToBot) return;
 
   try {
     const limitHit = await checkAndIncrementLimit(chatId, msg.from.id);
@@ -130,7 +131,7 @@ export async function handleUpdate(update) {
   try {
     await sendTyping(chatId);
 
-    if (msg.reply_to_message) {
+    if (msg.reply_to_message && isMentioned) {
       const messages = await getMessagesSince(chatId, msg.reply_to_message.date);
       if (messages.length === 0) {
         await sendMessage(chatId, "не помню с чего это началось", msg.message_id);
