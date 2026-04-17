@@ -2,11 +2,37 @@ import { storeMessage, getMessagesSince, getRecentMessages, checkAndIncrementLim
 import { summarize, chat, spontaneous, pickEmoji } from "./claude.js";
 
 const LIMIT_REPLIES = {
-  user_day:    "хватит на сегодня",
-  group_day:   "на сегодня всё, устал",
-  group_month: "в этом месяце больше не буду",
-  dm_day:      "ладно, хватит тестировать",
+  user_day: [
+    "хватит, ты уже использовал свой лимит на сегодня",
+    "всё всё, до завтра",
+    "ну сколько можно. приходи завтра",
+    "стоп. лимит исчерпан. пока",
+    "на сегодня хватит с тебя",
+  ],
+  group_day: [
+    "на сегодня мы закрыты",
+    "всё, устал. завтра",
+    "хватит на сегодня, серьёзно",
+    "лимит дня исчерпан. дайте отдохнуть",
+    "не сегодня. завтра приходите",
+  ],
+  group_month: [
+    "в этом месяце больше не буду, вы меня вымотали",
+    "месячный лимит кончился. до следующего месяца",
+    "всё, в этом месяце я своё отработал",
+    "хватит на месяц. увидимся в следующем",
+    "лимит месяца исчерпан. нет слов",
+  ],
+  dm_day: [
+    "ладно, хватит тестировать",
+    "всё на сегодня",
+    "достаточно уже",
+    "стоп, лимит",
+    "завтра продолжишь",
+  ],
 };
+
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 const BOT_TOKEN = () => process.env.TELEGRAM_BOT_TOKEN;
 const BOT_USERNAME = () => process.env.BOT_USERNAME;
@@ -149,7 +175,7 @@ export async function handleUpdate(update) {
     // DM rate limit: 20 calls/day (generous for testing, but capped)
     try {
       const limitHit = await checkAndIncrementLimit(`dm_${chatId}`, "dm");
-      if (limitHit) { await sendMessage(chatId, LIMIT_REPLIES.dm_day); return; }
+      if (limitHit) { await sendMessage(chatId, pick(LIMIT_REPLIES.dm_day)); return; }
     } catch (err) {
       console.error("DM limit check failed", err);
     }
@@ -171,7 +197,7 @@ export async function handleUpdate(update) {
   try {
     const limitHit = await checkAndIncrementLimit(chatId, msg.from.id);
     if (limitHit) {
-      await sendMessage(chatId, LIMIT_REPLIES[limitHit], msg.message_id);
+      await sendMessage(chatId, pick(LIMIT_REPLIES[limitHit]), msg.message_id);
       return;
     }
   } catch (err) {
