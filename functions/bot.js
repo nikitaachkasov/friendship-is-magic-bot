@@ -1,4 +1,10 @@
-import { storeMessage, getMessagesSince, getRecentMessages } from "./storage.js";
+import { storeMessage, getMessagesSince, getRecentMessages, checkAndIncrementLimit } from "./storage.js";
+
+const LIMIT_REPLIES = {
+  user_day:    "— Ты уже достаточно нас потревожил сегодня.\n— Согласен. Приходи завтра. Или не приходи.",
+  group_day:   "— На сегодня мы закрыты.\n— Мы вообще-то всегда закрыты, но сегодня особенно.",
+  group_month: "— Вы исчерпали наш месячный запас терпения.\n— У нас его и не было!",
+};
 import { summarize, chat } from "./claude.js";
 
 const BOT_TOKEN = () => process.env.TELEGRAM_BOT_TOKEN;
@@ -69,6 +75,12 @@ export async function handleUpdate(update) {
 
   // ── Group chat: only respond when @mentioned ───────────────────────────────
   if (!isMentioned) return;
+
+  const limitHit = await checkAndIncrementLimit(chatId, msg.from.id);
+  if (limitHit) {
+    await sendMessage(chatId, LIMIT_REPLIES[limitHit], msg.message_id);
+    return;
+  }
 
   await sendTyping(chatId);
 

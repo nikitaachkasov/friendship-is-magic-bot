@@ -1,5 +1,7 @@
 import { initializeApp, getApps } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
+
+const LIMITS = { userDay: 5, groupDay: 25, groupMonth: 200 };
 
 if (!getApps().length) {
   initializeApp();
@@ -28,6 +30,36 @@ export async function getMessagesSince(chatId, sinceDate) {
     .get();
 
   return snap.docs.map((d) => d.data());
+}
+
+// Check rate limits and increment counters atomically.
+// Returns null if ok, or "user_day" | "group_day" | "group_month" if a limit is hit.
+export async function checkAndIncrementLimit(chatId, userId) {
+  const today = new Date().toISOString().slice(0, 10);   // YYYY-MM-DD
+  const month = new Date().toISOString().slice(0, 7);    // YYYY-MM
+
+  const dayRef = db.collection("limits").doc(`${chatId}_${today}`);
+  const monthRef = db.collection("limits").doc(`${chatId}_${month}`);
+
+  const [daySnap, monthSnap] = await Promise.all([dayRef.get(), monthRef.get()]);
+
+  const dayData = daySnap.data() ?? {};
+  const monthData = monthSnap.data() ?? {};
+
+  const userCount = dayData[`u_${userId}`] ?? 0;
+  const dayTotal = dayData.total ?? 0;
+  const monthTotal = monthData.total ?? 0;
+
+  if (userCount >= LIMITS.userDay) return "user_day";
+  if (dayTotal >= LIMITS.groupDay) return "group_day";
+  if (monthTotal >= LIMITS.groupMonth) return "group_month";
+
+  await Promise.all([
+    dayRef.set({ total: FieldValue.increment(1), [`u_${userId}`]: FieldValue.increment(1) }, { merge: true }),
+    monthRef.set({ total: FieldValue.increment(1) }, { merge: true }),
+  ]);
+
+  return null;
 }
 
 // Fetch the N most recent messages (for opinions / DM context)

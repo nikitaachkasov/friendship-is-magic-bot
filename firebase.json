@@ -1,12 +1,18 @@
 {
   "functions": [
     {
-      "source": "functions",
       "codebase": "default",
-      "ignore": ["node_modules", ".git", "*.local"]
+      "source": "functions",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*.local"
+      ]
     }
   ],
   "firestore": {
+    "database": "(default)",
+    "location": "eur3",
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   }
