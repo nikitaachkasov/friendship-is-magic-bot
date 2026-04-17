@@ -1,0 +1,99 @@
+import { storeMessage, getMessagesSince, getRecentMessages } from "./storage.js";
+import { summarize, chat } from "./claude.js";
+
+const BOT_TOKEN = () => process.env.TELEGRAM_BOT_TOKEN;
+const BOT_USERNAME = () => process.env.BOT_USERNAME;
+const CREATOR_USERNAME = () => process.env.CREATOR_USERNAME ?? "nikitaachkasov";
+
+async function tgPost(method, body) {
+  const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN()}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+async function sendMessage(chatId, text, replyToMessageId = null) {
+  const body = { chat_id: chatId, text, parse_mode: "HTML" };
+  if (replyToMessageId) body.reply_to_message_id = replyToMessageId;
+  return tgPost("sendMessage", body);
+}
+
+async function sendTyping(chatId) {
+  return tgPost("sendChatAction", { chat_id: chatId, action: "typing" });
+}
+
+function getFullName(from) {
+  return from.first_name + (from.last_name ? ` ${from.last_name}` : "");
+}
+
+export async function handleUpdate(update) {
+  const msg = update.message;
+  if (!msg || !msg.text) return;
+
+  const chatId = msg.chat.id;
+  const chatType = msg.chat.type;
+  const fromUsername = msg.from?.username ?? null;
+  const fromName = getFullName(msg.from);
+
+  const isGroup = chatType === "group" || chatType === "supergroup";
+  const isPrivate = chatType === "private";
+
+  // Persist every group message for later summarization
+  if (isGroup) {
+    await storeMessage({
+      message_id: msg.message_id,
+      chat_id: chatId,
+      from_name: fromName,
+      from_username: fromUsername,
+      text: msg.text,
+      date: msg.date,
+    });
+  }
+
+  const botUsername = BOT_USERNAME();
+  const isMentioned = msg.text.includes(`@${botUsername}`);
+
+  // ── Private chat: only respond to the creator ─────────────────────────────
+  if (isPrivate) {
+    if (fromUsername !== CREATOR_USERNAME()) return;
+    await sendTyping(chatId);
+    // Use chat_id as a pseudo-history key for DMs
+    const recent = await getRecentMessages(chatId, 30);
+    const cleanText = msg.text.trim();
+    const response = await chat(recent, cleanText);
+    await sendMessage(chatId, response);
+    return;
+  }
+
+  // ── Group chat: only respond when @mentioned ───────────────────────────────
+  if (!isMentioned) return;
+
+  await sendTyping(chatId);
+
+  // @mention + reply-to → summarize from that message to now
+  if (msg.reply_to_message) {
+    const anchor = msg.reply_to_message;
+    const messages = await getMessagesSince(chatId, anchor.date);
+
+    if (messages.length === 0) {
+      await sendMessage(
+        chatId,
+        "— Когда всё это началось, нас здесь ещё не было.\n— Как и смысла в этом разговоре!",
+        msg.message_id
+      );
+      return;
+    }
+
+    const summary = await summarize(messages);
+    await sendMessage(chatId, summary, msg.message_id);
+    return;
+  }
+
+  // @mention without reply-to → sarcastic opinion with participant context
+  const recent = await getRecentMessages(chatId, 30);
+  const cleanText = msg.text.replace(`@${botUsername}`, "").trim() || "(просто позвали нас)";
+  const response = await chat(recent, cleanText);
+  await sendMessage(chatId, response, msg.message_id);
+}
