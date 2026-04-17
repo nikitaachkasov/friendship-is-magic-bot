@@ -1,5 +1,6 @@
 import { storeMessage, getMessagesSince, getRecentMessages, checkAndIncrementLimit, registerGroupChat, getGroupChats, getLastMessageTime, storeBotMessage, trackBotMessageReaction, markBotMessageReacted, checkAndIncrementReactionLimit, checkAndIncrementChimeLimit } from "./storage.js";
 import { summarize, chat, spontaneous, pickEmoji } from "./claude.js";
+import { resolveName } from "./names.js";
 
 const LIMIT_REPLIES = {
   user_day: [
@@ -71,7 +72,8 @@ async function sendTyping(chatId) {
 }
 
 function getFullName(from) {
-  return from.first_name + (from.last_name ? ` ${from.last_name}` : "");
+  const raw = from.first_name + (from.last_name ? ` ${from.last_name}` : "");
+  return resolveName(raw, from.username ?? "");
 }
 
 // Called by the scheduler — chimes in on all known active group chats
