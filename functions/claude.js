@@ -78,11 +78,15 @@ export async function pickEmoji(messageText) {
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 10,
-    system: "Ты выбираешь одну эмодзи-реакцию на сообщение. Отвечай ТОЛЬКО одним эмодзи из списка, без пробелов и текста.",
+    temperature: 1,
+    system: "Выбери одну эмодзи-реакцию на сообщение. Отвечай ТОЛЬКО одним символом из списка. Будь разнообразным — не выбирай одно и то же.",
     messages: [{ role: "user", content: `Список: ${ALLOWED_EMOJIS.join(" ")}\n\nСообщение: ${messageText}\n\nОдна эмодзи:` }],
   });
   const emoji = response.content[0].text.trim();
-  return ALLOWED_EMOJIS.includes(emoji) ? emoji : "👀";
+  // Fallback to a random emoji from the list if Claude returns something unexpected
+  return ALLOWED_EMOJIS.includes(emoji)
+    ? emoji
+    : ALLOWED_EMOJIS[Math.floor(Math.random() * ALLOWED_EMOJIS.length)];
 }
 
 export async function chat(recentMessages, userMessage) {
